@@ -1,0 +1,8 @@
+@model IEnumerable<PatientReports.Models.TransplantEventReportViewModel>
+@{
+    ViewData["Title"] = "Transplant Event Report";
+}
+
+<h2 class="mb-4">Transplant Event Report</h2>
+
+@await Html.PartialAsync("_TransplantEventReport", Model)

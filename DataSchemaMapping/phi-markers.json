@@ -1,0 +1,18 @@
+{
+  "database": "PatientDB (EF Core + SQLite)",
+  "phiColumns": [
+    { "table": "Patients", "column": "FirstName", "strategy": "pseudonymize" },
+    { "table": "Patients", "column": "LastName", "strategy": "pseudonymize" },
+    { "table": "Patients", "column": "DateOfBirth", "strategy": "age_range" },
+    { "table": "Patients", "column": "ContactNumber", "strategy": "redact" },
+    { "table": "Patients", "column": "Email", "strategy": "redact" },
+    { "table": "Patients", "column": "PhoneNumber", "strategy": "redact" },
+    { "table": "Patients", "column": "MRN", "strategy": "sequential_id" },
+    { "table": "Providers", "column": "FirstName", "strategy": "pseudonymize" },
+    { "table": "Providers", "column": "LastName", "strategy": "pseudonymize" },
+    { "table": "Providers", "column": "NPI", "strategy": "sequential_id" },
+    { "table": "_viewmodel", "column": "PatientName", "strategy": "pseudonymize" },
+    { "table": "_viewmodel", "column": "ProviderName", "strategy": "pseudonymize" },
+    { "table": "_viewmodel", "column": "Mrn", "strategy": "sequential_id" }
+  ]
+}

@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Transplant Event Report</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body { margin: 0; padding: 1rem; font-family: "Segoe UI", system-ui, -apple-system, sans-serif; font-size: 14px; color: #212529; background: #fff; }
+    .report { max-width: 1200px; margin: 0 auto; }
+    .report__title { text-align: center; font-size: 1.35rem; font-weight: 700; color: #1f3864; margin: 0 0 1rem; }
+    .report__filters { font-size: 0.85rem; color: #555; margin: 0 0 0.75rem; }
+    .report__summary { background: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; border-radius: 4px; padding: 0.6rem 1rem; margin-bottom: 1rem; font-weight: 600; }
+    .report__narrative { margin: 0.75rem 0 1rem; padding: 0; background: #f8f9fa; border: 1px solid #e2e6ea; border-radius: 6px; font-size: 0.9rem; overflow: hidden; }
+    .report__narrative-header { display: flex; align-items: center; gap: 8px; padding: 10px 16px; background: #1f3864; color: #fff; font-weight: 600; font-size: 13px; }
+    .report__narrative-header svg { flex-shrink: 0; }
+    .report__narrative-body { padding: 14px 16px; line-height: 1.6; color: #333; }
+    .report__narrative-body p { margin: 0 0 8px; }
+    .report__narrative-body p:last-child { margin-bottom: 0; }
+    .report__table { width: 100%; border-collapse: collapse; margin-bottom: 1rem; }
+    .report__table thead th { background: #212529; color: #fff; font-weight: 700; text-align: left; padding: 6px 8px; white-space: nowrap; }
+    .report__table tbody td { padding: 6px 8px; border-bottom: 1px solid #dee2e6; vertical-align: middle; }
+    .report__table tbody tr:nth-child(odd) { background: #f2f2f2; }
+    .report__table tbody tr:nth-child(even) { background: #fff; }
+    .report__empty { text-align: center; padding: 2rem; color: #6c757d; font-style: italic; }
+    .report__footer { font-size: 0.8rem; color: #888; border-top: 1px solid #dee2e6; padding-top: 0.5rem; margin-top: 1rem; display: flex; justify-content: space-between; }
+    @media print {
+      body { padding: 0; font-size: 11px; }
+      .report__table thead th { background: #212529 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; color: #fff !important; }
+      .report__table tbody tr:nth-child(odd) { background: #f2f2f2 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .report__footer { page-break-inside: avoid; }
+    }
+    @media (max-width: 900px) {
+      .report__table { font-size: 0.8rem; }
+      .report__table thead th, .report__table tbody td { padding: 4px 5px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="report" id="report">
+    <header class="report__header">
+      <h1 class="report__title">Transplant Event Report</h1>
+      <p class="report__filters" data-filters></p>
+    </header>
+
+    <section class="report__summary" data-summary hidden></section>
+    <section class="report__narrative" data-narrative hidden></section>
+
+    <table class="report__table">
+      <thead>
+        <tr>
+          <th scope="col">Patient</th>
+          <th scope="col">Date of Visit</th>
+          <th scope="col">Previous Visit</th>
+          <th scope="col">Transplant Date</th>
+          <th scope="col">Infusion Date</th>
+          <th scope="col">Event ID</th>
+          <th scope="col">Transplant Number</th>
+          <th scope="col">Total Transplants</th>
+          <th scope="col">Donor Type</th>
+          <th scope="col">Inpatient</th>
+        </tr>
+      </thead>
+      <tbody data-rows></tbody>
+    </table>
+
+    <p class="report__empty" data-empty hidden>No data available.</p>
+
+    <footer class="report__footer">
+      <span data-generated></span>
+      <span data-executed-by></span>
+    </footer>
+  </main>
+
+  <!-- REPORT_DATA -->
+  <script src="transplant_event.js" defer></script>
+</body>
+</html>
