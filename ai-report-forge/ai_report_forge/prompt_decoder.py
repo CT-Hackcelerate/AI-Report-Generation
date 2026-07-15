@@ -2,12 +2,18 @@ import json
 import logging
 import re
 
+import anthropic
 from ollama import Client as OllamaClient
 
+from . import prompt_log
 from .config import settings
 from .context_loader import AppContext
 
 log = logging.getLogger(__name__)
+
+# Below this confidence the local decode is treated as failed and, when a
+# Claude API key is configured, retried on Claude.
+FALLBACK_CONFIDENCE = 0.3
 
 SYSTEM_PROMPT = """\
 You are a report routing and query specification system for a healthcare application.
@@ -112,12 +118,70 @@ Respond with ONLY valid JSON, no other text:
 }}"""
 
 
-def decode_prompt(question: str, ctx: AppContext) -> dict:
+def decode_prompt(question: str, ctx: AppContext, provider: str = "local") -> dict:
     system = SYSTEM_PROMPT.format(
         report_summaries=ctx.report_summaries_text(),
         schema_context=ctx.schema_text(),
     )
 
+    if provider == "claude":
+        result = _decode_with_claude(question, system)
+        result["source"] = "claude"
+        _log_decode(question, provider, result)
+        return result
+
+    if settings.force_decode_fallback:
+        # Demo/testing knob (FORCE_DECODE_FALLBACK in .env): skip the local
+        # model and pretend it failed, so the fallback path runs on cue.
+        log.warning("FORCE_DECODE_FALLBACK is enabled — skipping local decode")
+        result = _unknown_response("Local decode skipped (FORCE_DECODE_FALLBACK)")
+    else:
+        result = _decode_with_ollama(question, system)
+
+    # Local decode failed or was too uncertain — retry on Claude when configured.
+    fallback_attempted = False
+    if _needs_fallback(result) and settings.anthropic_api_key:
+        fallback_attempted = True
+        log.info(
+            "Local decode failed (report=%s, confidence=%.2f) — falling back to Claude",
+            result["report"], result["confidence"],
+        )
+        claude_result = _decode_with_claude(question, system)
+        if not _needs_fallback(claude_result):
+            # Distinct source so the UI can show that the local model failed
+            # and Claude stepped in, vs. the user explicitly asking Claude.
+            claude_result["source"] = "claude_fallback"
+            _log_decode(question, provider, claude_result, fallback_attempted)
+            return claude_result
+
+    result["source"] = "ollama"
+    _log_decode(question, provider, result, fallback_attempted)
+    return result
+
+
+def _log_decode(
+    question: str, provider: str, result: dict, fallback_attempted: bool = False
+) -> None:
+    prompt_log.record({
+        "kind": "decode",
+        "provider": provider,
+        "source": result.get("source"),
+        "succeeded": not _needs_fallback(result),
+        "fallbackAttempted": fallback_attempted,
+        "sentQuestion": question,
+        "report": result.get("report"),
+        "note": (
+            "Decode sends the question text as-is — filter values (e.g. patient "
+            "names) must be extracted from it. No database rows are sent."
+        ),
+    })
+
+
+def _needs_fallback(result: dict) -> bool:
+    return result["report"] == "UNKNOWN" or result["confidence"] < FALLBACK_CONFIDENCE
+
+
+def _decode_with_ollama(question: str, system: str) -> dict:
     try:
         client = OllamaClient(
             host=settings.ollama_base_url,
@@ -130,6 +194,7 @@ def decode_prompt(question: str, ctx: AppContext) -> dict:
                 {"role": "user", "content": question},
             ],
             options={"temperature": 0.1},
+            keep_alive=settings.ollama_keep_alive,
         )
     except Exception:
         log.exception("Ollama call failed during prompt decoding")
@@ -137,8 +202,49 @@ def decode_prompt(question: str, ctx: AppContext) -> dict:
 
     raw_text = response["message"]["content"].strip()
     result = _parse_response(raw_text)
+    # The sanitizer compensates for known small-model decode errors; it is
+    # only applied to the local model's output.
     _sanitize_filters(question, result["query"]["filters"])
     return result
+
+
+def _decode_with_claude(question: str, system: str) -> dict:
+    """Decode the question with the Claude API.
+
+    Note: decoding inherently sends the user's question to the cloud — filter
+    values (e.g. patient names) must be extracted from it, so it cannot be
+    anonymized the way /summarize data is. No database rows ever leave here.
+    """
+    if not settings.anthropic_api_key:
+        return _unknown_response(
+            "Claude is not configured — set ANTHROPIC_API_KEY in ai-report-forge/.env"
+        )
+
+    try:
+        client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+        response = client.messages.create(
+            model=settings.claude_model,
+            max_tokens=2048,
+            system=system,
+            messages=[{"role": "user", "content": question}],
+        )
+        raw_text = "".join(
+            block.text for block in response.content if block.type == "text"
+        ).strip()
+    except anthropic.APIStatusError as exc:
+        log.exception("Claude API call failed during prompt decoding")
+        # Surface the API's own reason (auth, billing, rate limit) — this is
+        # operator-facing config feedback, not user data.
+        detail = getattr(getattr(exc, "body", None), "get", lambda *_: None)("error")
+        message = (detail or {}).get("message") if isinstance(detail, dict) else None
+        return _unknown_response(f"Claude API error: {message or exc.status_code}")
+    except Exception:
+        log.exception("Claude API call failed during prompt decoding")
+        return _unknown_response("Claude API unavailable")
+
+    if not raw_text:
+        return _unknown_response("Claude returned an empty response")
+    return _parse_response(raw_text)
 
 
 # Words that legitimately signal exclusion in the question. If none of these

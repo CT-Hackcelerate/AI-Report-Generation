@@ -117,8 +117,8 @@ public class ReportsController : Controller
             SelectedReport = report,
             FromDate = fromDate ?? "2026-01-01",
             ToDate = toDate ?? "2026-12-31",
-            MinAge = minAge,
-            MaxAge = maxAge,
+            MinAge = minAge ?? "18",
+            MaxAge = maxAge ?? "70",
         });
     }
 
@@ -126,7 +126,7 @@ public class ReportsController : Controller
     // plugin-generated static HTML templates, populated by the existing .NET
     // data logic. The selected report renders in an iframe (the standalone
     // generated template served by HtmlReport).
-    public IActionResult HtmlReports(string? report, string? question, string? brainError, string? spec)
+    public IActionResult HtmlReports(string? report, string? question, string? brainError, string? spec, string? decodedBy)
     {
         var vm = new ReportsHubViewModel
         {
@@ -134,6 +134,7 @@ public class ReportsController : Controller
             Question = question,
             BrainError = brainError,
             QuerySpecB64 = spec,
+            DecodedBy = decodedBy,
         };
 
         // Decode the spec to display the applied-filters badges in the hub page.
@@ -144,14 +145,41 @@ public class ReportsController : Controller
         return View(vm);
     }
 
-    public async Task<IActionResult> AskReport(string question)
+    // Transparency page: shows what was actually sent to each LLM (original
+    // question vs. scrubbed question / anonymized rows), fetched from the
+    // brain's in-memory prompt log. Populated by the two Ask buttons.
+    public async Task<IActionResult> PromptLog()
+    {
+        var vm = new PromptLogViewModel();
+        try
+        {
+            var log = await _brainClient.GetPromptLogAsync();
+            vm.Entries = log.Entries;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to fetch prompt log from brain");
+            vm.Error = "The AI brain service is unavailable — the prompt log lives there.";
+        }
+        return View(vm);
+    }
+
+    public async Task<IActionResult> AskReport(string question, string provider = "local")
     {
         if (string.IsNullOrWhiteSpace(question))
             return RedirectToAction(nameof(HtmlReports));
 
+        // The brain owns the Claude API key (ai-report-forge/.env). "claude"
+        // decodes directly on the Claude API; "local" uses Ollama with an
+        // automatic Claude fallback when configured. If Claude is not
+        // configured the brain returns UNKNOWN with an explanatory message,
+        // which surfaces below as brainError.
+        if (provider != "claude")
+            provider = "local";
+
         try
         {
-            var decoded = await _brainClient.DecodePromptAsync(question);
+            var decoded = await _brainClient.DecodePromptAsync(question, provider);
 
             if (decoded.Report == "UNKNOWN" || decoded.Confidence < 0.3)
             {
@@ -183,7 +211,7 @@ public class ReportsController : Controller
             if (decoded.Query.Filters.Count > 0)
                 specB64 = EncodeQuerySpec(decoded.Query);
 
-            return RedirectToAction(nameof(HtmlReports), new { report = reportKey, question, spec = specB64 });
+            return RedirectToAction(nameof(HtmlReports), new { report = reportKey, question, spec = specB64, decodedBy = decoded.Source });
         }
         catch (Exception ex)
         {
@@ -243,8 +271,8 @@ public class ReportsController : Controller
                 key = "patient_clinical_summary";
                 var from = DateTime.TryParse(fromDate, out var f) ? f : new DateTime(2026, 1, 1);
                 var to = DateTime.TryParse(toDate, out var t) ? t : new DateTime(2026, 12, 31);
-                var minA = int.TryParse(minAge, out var mn) ? mn : 0;
-                var maxA = int.TryParse(maxAge, out var mx) ? mx : 120;
+                var minA = int.TryParse(minAge, out var mn) ? mn : 18;
+                var maxA = int.TryParse(maxAge, out var mx) ? mx : 70;
                 var clinicalRows = await _dataService.GetClinicalFlatRowsAsync(from, to, minA, maxA, "All");
                 // Apply brain-decoded filters (e.g. gender, facility) — this
                 // report is built from denormalized rows, so filtering happens
@@ -264,11 +292,36 @@ public class ReportsController : Controller
                 return RedirectToAction(nameof(HtmlReports));
         }
 
+        // Fail closed: if any brain-decoded filter was skipped (blocked PHI
+        // field, disallowed operator, or no navigation path), do NOT render a
+        // broader result than the user asked for. Probing a blocked field
+        // (e.g. "MRN-00003") must not dump the whole table.
+        var skippedFilters = hasBrainQuery
+            ? querySpec!.Filters.Where(f => f.Status == "skipped").ToList()
+            : new List<QueryFilter>();
+        if (skippedFilters.Count > 0)
+        {
+            _logger.LogWarning(
+                "Report '{Report}' not populated: {Count} filter(s) skipped ({Fields})",
+                report, skippedFilters.Count,
+                string.Join(", ", skippedFilters.Select(f => $"{f.Table}.{f.Field}")));
+            rows = Array.Empty<object>();
+        }
+
         var rowList = (System.Collections.ICollection)rows;
         var narrative = "";
         object? chart = null;
 
-        if (!string.IsNullOrWhiteSpace(question))
+        if (skippedFilters.Count > 0)
+        {
+            narrative = "Your question included a condition that cannot be used for "
+                + "filtering (a protected or unsupported field: "
+                + string.Join(", ", skippedFilters.Select(f => f.Field).Distinct())
+                + "). To avoid showing more data than you asked for, no rows are "
+                + "displayed. Please rephrase using supported filters (e.g. name, "
+                + "gender, facility, dates).";
+        }
+        else if (!string.IsNullOrWhiteSpace(question))
         {
             try
             {
@@ -366,6 +419,8 @@ document.addEventListener('DOMContentLoaded', function() {
     // hub page.
     public async Task<IActionResult> RdlView(string report, string? fromDate, string? toDate, string? minAge, string? maxAge)
     {
+      try
+      {
         byte[] pdf;
         switch (report)
         {
@@ -386,8 +441,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 // and echo the same filters into the report via its parameters.
                 var from = DateTime.TryParse(fromDate, out var f) ? f : new DateTime(2026, 1, 1);
                 var to = DateTime.TryParse(toDate, out var t) ? t : new DateTime(2026, 12, 31);
-                var minA = int.TryParse(minAge, out var mn) ? mn : 0;
-                var maxA = int.TryParse(maxAge, out var mx) ? mx : 120;
+                var minA = int.TryParse(minAge, out var mn) ? mn : 18;
+                var maxA = int.TryParse(maxAge, out var mx) ? mx : 70;
 
                 var rows = await _dataService.GetClinicalFlatRowsAsync(from, to, minA, maxA, "All");
                 var parameters = new Dictionary<string, string>
@@ -406,6 +461,23 @@ document.addEventListener('DOMContentLoaded', function() {
         }
 
         return File(pdf, "application/pdf");
+      }
+      catch (Exception ex)
+      {
+        _logger.LogError(ex, "RDL render failed for report {Report}", report);
+        var svc = _config["RdlRenderService:BaseUrl"] ?? "http://localhost:5250/";
+        var detail = System.Net.WebUtility.HtmlEncode(ex.Message);
+        var msg = $@"<!doctype html><html><head><meta charset=""utf-8""></head>
+<body style=""font-family:'Segoe UI',Arial,sans-serif;padding:24px;color:#333;line-height:1.5"">
+  <h3 style=""color:#b02a37;margin:0 0 .5rem"">SSRS report could not be rendered</h3>
+  <p>The RDL rendering service didn't respond. The <b>RdlRenderService</b> (.NET Framework 4.8)
+     must be running for the SSRS / PDF report path.</p>
+  <p><b>Start it:</b> <code>dotnet run --project DotNetApp/RdlRenderService</code>
+     &nbsp;(expected at <code>{svc}</code>)</p>
+  <p style=""color:#999;font-size:.85rem"">Detail: {detail}</p>
+</body></html>";
+        return Content(msg, "text/html");
+      }
     }
 
     // Kept for backward compatibility / direct links; both render the shared partials.

@@ -11,7 +11,17 @@ _BASE_DIR = Path(__file__).resolve().parents[1]
 class Settings(BaseSettings):
     ollama_base_url: str = "http://localhost:11434"
     ollama_model: str = "qwen2.5:3b"
-    ollama_timeout: int = 60
+    ollama_timeout: int = 120
+    ollama_keep_alive: str = "30m"
+
+    # Charts added latency and distracted from the core SSRS-replacement PoC;
+    # keep the rendering pipeline intact but don't ask the LLM for chart specs.
+    enable_charts: bool = False
+
+    # DEMO/TESTING ONLY: make every local decode report failure so the Claude
+    # fallback fires deterministically (the local model normally fails too
+    # rarely to demo on cue). Never enable outside demos.
+    force_decode_fallback: bool = False
 
     anthropic_api_key: str = ""
     claude_model: str = "claude-opus-4-8"
