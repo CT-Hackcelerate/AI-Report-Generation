@@ -72,9 +72,8 @@ ai-report-forge/        Python brain service (FastAPI): decode-prompt, summarize
 HTMLReportsFolder/       Generated HTML+JS report templates (+ .md docs)
 ReportThoughts/          Phase-1 analysis per report + _CONTEXT.md (app migration context)
 DataSchemaMapping/       schema-mapping.json + phi-markers.json
-Reports/                 Legacy SSRS .rdl source files
 .claude/                 Phase-1 Claude Code plugin (skills / agents / commands) + plans
-docs/                    Quick start, runbook, NLP query reference
+Documentation_and_Demo/  Docs, demo script, evidence screenshots, and demo videos
 ```
 
 ## Prerequisites
@@ -89,7 +88,7 @@ docs/                    Quick start, runbook, NLP query reference
 
 ## Running (4 processes)
 
-See **[docs/quick_start.md](docs/quick_start.md)** for the full walkthrough. In short:
+See **[Documentation_and_Demo/docs/quick_start.md](Documentation_and_Demo/docs/quick_start.md)** for the full walkthrough. In short:
 
 ```bash
 # 1. Ollama (local LLM)
@@ -138,12 +137,24 @@ cd ai-report-forge && python -m pytest tests/ -v   # brain unit tests (no servic
 - **Honest failures** — if both LLMs fail, the API returns an error instead of a
   fabricated summary; Claude API errors (billing, auth) surface with their real reason.
 
+## Demo
+
+| Video | Description |
+|---|---|
+| [Application demo](Documentation_and_Demo/demo-recording/Application_demo.mp4) | End-to-end walkthrough of the running app — Ask Local AI, Ask Claude, provenance banner, Prompt Log, and Classic (SSRS) reports |
+| [Overview / pitch](Documentation_and_Demo/demo-recording/AI-Report-Forge-PPT-Demo.mp4) | Narrated presentation covering the problem, architecture, and PHI-safety story |
+
+> The `.mp4` files are stored in the repo — click a link to download or preview it, or
+> open [Documentation_and_Demo/AI-Report-Forge-PPT.html](Documentation_and_Demo/AI-Report-Forge-PPT.html)
+> for the slide deck. See also the [demo script](Documentation_and_Demo/demo-script.md) and
+> [evidence screenshots](Documentation_and_Demo/evidence/).
+
 ## Documentation
 
 | Document | Description |
 |---|---|
-| [Architecture](docs/architecture.md) | How the system works — components, request flow, PHI protection, trust boundaries, with diagrams |
-| [Quick Start](docs/quick_start.md) | Setup and run guide |
-| [Runbook](docs/runbook-ai-report-forge-poc.md) | Full PoC runbook: architecture, demo scenarios, troubleshooting |
-| [NLP Query Reference](docs/NLP-Query-Reference.md) | Supported natural-language queries with expected results |
+| [Architecture](Documentation_and_Demo/docs/architecture.md) | How the system works — components, request flow, PHI protection, trust boundaries, with diagrams |
+| [Quick Start](Documentation_and_Demo/docs/quick_start.md) | Setup and run guide |
+| [Runbook](Documentation_and_Demo/docs/runbook-ai-report-forge-poc.md) | Full PoC runbook: architecture, demo scenarios, troubleshooting |
+| [NLP Query Reference](Documentation_and_Demo/docs/NLP-Query-Reference.md) | Supported natural-language queries with expected results |
 | [Architecture & design](.claude/plan/ai-driven-reporting-poc.md) | Original two-phase design doc |
